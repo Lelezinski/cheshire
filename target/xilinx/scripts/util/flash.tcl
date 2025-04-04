@@ -22,6 +22,7 @@ set hw_cfgmem [get_property PROGRAM.HW_CFGMEM $hw_device]
 # Create image for and configure memory depending on board
 # TODO: add bitstream flashing for genesys2
 switch $board {
+    genesys2 -
     vcu128 {
         set mcs ${project_root}/image.mcs
         write_cfgmem -force -format mcs -size 256 -interface SPIx4 \
@@ -36,9 +37,9 @@ switch $board {
             PROGRAM.CFG_PROGRAM {1} \
             PROGRAM.VERIFY {1} \
             PROGRAM.CHECKSUM {0} \
-        ] $hw_cfgmem
+            ] $hw_cfgmem
     }
-    default {nocfgexit flash_spi $board}
+    default { nocfgexit flash_spi $board }
 }
 
 # Create bitstream to access config memory

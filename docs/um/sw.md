@@ -22,7 +22,11 @@ To build a baremetal program (here `sw/tests/helloworld.c`) executing from the S
 make sw/tests/helloworld.spm.elf
 ```
 
-To create the same program executing from DRAM, `sw/tests/helloworld.spm.dram` can instead be built from the same source. Depending on their assumptions and behavior, not all programs may be built to execute from both locations.
+To create the same program executing from DRAM, `sw/tests/helloworld.dram.elf` can instead be built from the same source.
+
+Not all BMPs may be designed to be linked in multiple ways like `helloworld` above is. Linking is controlled by the linker scripts in `sw/link`. By convention, BMP main source files with a suffix are intended to only be linked with the corresponding script; for example, `sw/tests/dma_2d.spm.c` should only be linked against SPM using `sw/link/spm.ld`.
+
+When building BMPs, the toolchain will strip any suffixes corresponding to existing linker scripts. When running `make sw-all`, tests in `sw/tests` will be built only for their intended linking targets. Tests without suffixes, like `helloworld`, are assumed to be agnostic and will be built for all linking targets.
 
 ## Boot Flow
 
@@ -47,6 +51,8 @@ The boot ROM supports four builtin boot modes chosen from by the `boot_mode_i` p
 | `0b10`              | EEPROM (24FC1025)     | I2C                        |
 
 
+Should a program invoked by the boot ROM return, the boot ROM will attempt to yield control to an external debugger if present, such as GDB, using the `ebreak` instruction.
+
 #### Passive Preload
 
 The *passive preload* boot mode expects code to be preloaded to an executable location and an entry point to be written to `scratch[1:0]`. After preloading, execution is launched when `scratch[2][0]` is set to 1. Unlike for autonomous boot modes, BMPs can directly be preloaded into DRAM and have no size restriction.
@@ -58,7 +64,6 @@ The JTAG and serial link interfaces can preload programs by directly accessing t
 | `0x11` (Read)  | 64b address, 64b length | RX `ACK`, RX read data, RX `EOT`          |
 | `0x12` (Write) | 64b address, 64b length | RX `ACK`, TX write data, RX `EOT`         |
 | `0x13` (Exec)  | 64b address             | RX `ACK`, execution, RX `ACK`, RX return  |
-
 
 #### Autonomous Boot
 
@@ -72,7 +77,11 @@ BMPs that run from SPM and fit into the alotted size can be compiled into raw im
 make sw/tests/helloworld.(rom|gpt).(bin|memh)
 ```
 
-The boot ROM is *not* reentrant; when an invoked BMP returns, the system will halt and not reboot.
+These images then can be copied onto a bootable disk. For convenience, we also provide a BMP that can flash images preloaded into DRAM to selected devices (`sw/boot/flash.spm.elf`). This BMP can be invoked through OpenOCD using the following script (see BMP and script for details):
+
+```
+util/flash_disk.sh <board_or_adapter> <disk_type_idx> <image>
+```
 
 ### Zero-Stage Loader
 

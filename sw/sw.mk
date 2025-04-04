@@ -28,7 +28,7 @@ CHS_SW_CCFLAGS ?= $(CHS_SW_FLAGS) -ggdb -mcmodel=medany -mexplicit-relocs -fno-b
 CHS_SW_LDFLAGS ?= $(CHS_SW_FLAGS) -nostartfiles -Wl,--gc-sections -Wl,-L$(CHS_SW_LD_DIR)
 CHS_SW_ARFLAGS ?= --plugin=$(CHS_SW_LTOPLUG)
 
-CHS_SW_ALL += $(CHS_SW_LIBS) $(CHS_SW_GEN_HDRS) $(CHS_SW_TESTS)
+CHS_SW_ALL += $(CHS_SW_LIBS) $(CHS_SW_GEN_HDRS) $(CHS_SW_TESTS) $(CHS_SW_TOOLS)
 
 .PRECIOUS: %.elf %.dtb
 
@@ -79,7 +79,7 @@ endef
 $(eval $(call chs_sw_gen_hdr_rule,clint,$(CLINTROOT)/src/clint.hjson $(CLINTROOT)/.generated))
 $(eval $(call chs_sw_gen_hdr_rule,serial_link,$(CHS_ROOT)/hw/serial_link.hjson $(CHS_SLINK_DIR)/.generated))
 $(eval $(call chs_sw_gen_hdr_rule,axi_vga,$(AXI_VGA_ROOT)/data/axi_vga.hjson $(AXI_VGA_ROOT)/.generated))
-$(eval $(call chs_sw_gen_hdr_rule,idma,$(IDMA_ROOT)/src/frontends/register_64bit_2d/idma_reg64_2d_frontend.hjson))
+$(eval $(call chs_sw_gen_hdr_rule,idma,$(IDMA_ROOT)/target/rtl/idma_reg64_2d.hjson))
 $(eval $(call chs_sw_gen_hdr_rule,axi_llc,$(CHS_LLC_DIR)/data/axi_llc_regs.hjson))
 $(eval $(call chs_sw_gen_hdr_rule,cheshire,$(CHS_ROOT)/hw/regs/cheshire_regs.hjson))
 $(eval $(call chs_sw_gen_hdr_rule,axi_rt,$(AXIRTROOT)/src/regs/axi_rt.hjson $(AXIRTROOT)/.generated))
@@ -100,14 +100,21 @@ CHS_SW_GEN_HDRS += $(OTPROOT)/.generated
 %.o: %.S $(CHS_SW_GEN_HDRS)
 	$(CHS_SW_CC) $(CHS_SW_INCLUDES) $(CHS_SW_CCFLAGS) -c $< -o $@
 
+# Programs may specify a linking mode in their name, e.g. `helloworld.spm.c`.
+# Tests with such infixes are built only for one linking mode, tests without them for all
 define chs_sw_ld_elf_rule
 .PRECIOUS: %.$(1).elf
 
 %.$(1).elf: $$(CHS_SW_LD_DIR)/$(1).ld %.o $$(CHS_SW_LIBS)
 	$$(CHS_SW_CC) $$(CHS_SW_INCLUDES) -T$$< $$(CHS_SW_LDFLAGS) -o $$@ $$*.o $$(CHS_SW_LIBS)
+
+%.$(1).elf: $$(CHS_SW_LD_DIR)/$(1).ld %.$(1).o $$(CHS_SW_LIBS)
+	$$(CHS_SW_CC) $$(CHS_SW_INCLUDES) -T$$< $$(CHS_SW_LDFLAGS) -o $$@ $$*.$(1).o $$(CHS_SW_LIBS)
 endef
 
-$(foreach link,$(patsubst $(CHS_SW_LD_DIR)/%.ld,%,$(wildcard $(CHS_SW_LD_DIR)/*.ld)),$(eval $(call chs_sw_ld_elf_rule,$(link))))
+CHS_SW_LINK_MODES ?= $(patsubst $(CHS_SW_LD_DIR)/%.ld,%,$(wildcard $(CHS_SW_LD_DIR)/*.ld))
+
+$(foreach link,$(CHS_SW_LINK_MODES),$(eval $(call chs_sw_ld_elf_rule,$(link))))
 
 %.dump: %.elf
 	$(CHS_SW_OBJDUMP) -d -S $< > $@
@@ -154,15 +161,36 @@ $(CHS_SW_DIR)/boot/linux.%.gpt.bin: $(CHS_SW_DIR)/boot/zsl.rom.bin $(CHS_SW_DIR)
 	dd if=$(word 3,$^) of=$@ bs=512 seek=2048 conv=notrunc
 	dd if=$(word 4,$^) of=$@ bs=512 seek=8192 conv=notrunc
 
+#################
+# Sotware Tools #
+#################
+
+# This program can be used to flash bootable disks using preloaded images.
+# `util/flash_disk.sh` utilizes it to flash disk images preloaded over JTAG.
+CHS_SW_TOOLS += $(CHS_SW_DIR)/boot/flash.spm.elf
+
 #########
 # Tests #
 #########
 
-CHS_SW_TEST_SRCS_S  	= $(wildcard $(CHS_SW_DIR)/tests/*.S)
-CHS_SW_TEST_SRCS_C     	= $(wildcard $(CHS_SW_DIR)/tests/*.c)
-CHS_SW_TEST_DRAM_DUMP  	= $(CHS_SW_TEST_SRCS_S:.S=.dram.dump) $(CHS_SW_TEST_SRCS_C:.c=.dram.dump)
-CHS_SW_TEST_SPM_DUMP   	= $(CHS_SW_TEST_SRCS_S:.S=.spm.dump)  $(CHS_SW_TEST_SRCS_C:.c=.spm.dump)
-CHS_SW_TEST_SPM_ROMH   	= $(CHS_SW_TEST_SRCS_S:.S=.rom.memh)  $(CHS_SW_TEST_SRCS_C:.c=.rom.memh)
-CHS_SW_TEST_SPM_GPTH   	= $(CHS_SW_TEST_SRCS_S:.S=.gpt.memh)  $(CHS_SW_TEST_SRCS_C:.c=.gpt.memh)
+# Accumulate single-link-mode sources and corresponding .dump targets
+define chs_sw_tests_add_rule
+BLA += $(wildcard $(2)/*.$(1).c)
+CHS_SW_TEST_LONE += $(wildcard $(2)/*.$(1).c) $(wildcard $(2)/*.$(1).S)
+CHS_SW_TEST_DUMP += $(patsubst %.c,%.dump,$(wildcard $(2)/*.$(1).c)) $(patsubst %.S,%.dump,$(wildcard $(2)/*.$(1).S))
+endef
 
-CHS_SW_TESTS = $(CHS_SW_TEST_DRAM_DUMP) $(CHS_SW_TEST_SPM_DUMP) $(CHS_SW_TEST_SPM_ROMH) $(CHS_SW_TEST_SPM_GPTH)
+# Accumulate tests for all link modes
+$(foreach link,$(CHS_SW_LINK_MODES),$(eval $(call chs_sw_tests_add_rule,$(link),$(CHS_SW_DIR)/tests)))
+
+# Collect mode-agnostic tests, which should be build for all modes, and their .dump targets
+CHS_SW_TEST_C_LALL = $(filter-out $(CHS_SW_TEST_LONE), $(wildcard $(CHS_SW_DIR)/tests/*.c))
+CHS_SW_TEST_S_LALL = $(filter-out $(CHS_SW_TEST_LONE), $(wildcard $(CHS_SW_DIR)/tests/*.S))
+$(foreach link,$(CHS_SW_LINK_MODES),$(eval CHS_SW_TEST_DUMP += $(CHS_SW_TEST_C_LALL:.c=.$(link).dump) $(CHS_SW_TEST_S_LALL:.S=.$(link).dump)))
+
+# Generate .memh targets for ROM-linked tests
+CHS_SW_TEST_ROM_DUMP = $(filter %.rom.dump,$(CHS_SW_TEST_DUMP))
+CHS_SW_TESTS += $(CHS_SW_TEST_ROM_DUMP:.rom.dump=.rom.memh) $(CHS_SW_TEST_ROM_DUMP:.rom.dump=.gpt.memh)
+
+# Add all dumps to test build
+CHS_SW_TESTS += $(CHS_SW_TEST_DUMP)

@@ -31,6 +31,7 @@ package cheshire_pkg;
   localparam int unsigned SlinkNumLanes   = serial_link_single_channel_reg_pkg::NumBits/2;
   localparam int unsigned SlinkMaxClkDiv  = 1 << serial_link_single_channel_reg_pkg::Log2MaxClkDiv;
   localparam int unsigned ClintNumCores   = clint_reg_pkg::NumCores;
+  localparam int unsigned UsbNumPorts     = spinal_usb_ohci_pkg::NumPhyPorts;
 
   // Default JTAG ID code type
   typedef struct packed {
@@ -132,6 +133,7 @@ package cheshire_pkg;
     bit     Dma;
     bit     SerialLink;
     bit     Vga;
+    bit     Usb;
     bit     AxiRt;
     bit     Clic;
     bit     IrqRouter;
@@ -172,6 +174,10 @@ package cheshire_pkg;
     doub_bt SlinkTxAddrMask;
     doub_bt SlinkTxAddrDomain;
     dw_bt   SlinkUserAmoBit;
+    // Parameters for USB
+    dw_bt   UsbDmaMaxReads;
+    doub_bt UsbAddrMask;
+    doub_bt UsbAddrDomain;
     // Parameters for DMA
     dw_bt   DmaConfMaxReadTxns;
     dw_bt   DmaConfMaxWriteTxns;
@@ -212,6 +218,7 @@ package cheshire_pkg;
   typedef struct packed {
     cheshire_bus_err_intr_t bus_err;
     logic [31:0] gpio;
+    logic usb;
     logic spih_spi_event;
     logic spih_error;
     logic i2c_host_timeout;
@@ -271,7 +278,7 @@ package cheshire_pkg;
   localparam doub_bt AmRegs   = 'h0300_0000;
   localparam doub_bt AmLlc    = 'h0300_1000;
   localparam doub_bt AmSlink  = 'h0300_6000;
-  localparam doub_bt AmBusErr = 'h0300_8000;
+  localparam doub_bt AmBusErr = 'h0300_9000;
   localparam doub_bt AmSpm    = 'h1000_0000;  // Cached region at bottom, uncached on top
   localparam doub_bt AmClic   = 'h0800_0000;
 
@@ -291,6 +298,7 @@ package cheshire_pkg;
     aw_bt dma;
     aw_bt slink;
     aw_bt vga;
+    aw_bt usb;
     aw_bt ext_base;
     aw_bt num_in;
   } axi_in_t;
@@ -303,6 +311,7 @@ package cheshire_pkg;
     if (cfg.Dma)        begin i++; ret.dma   = i; end
     if (cfg.SerialLink) begin i++; ret.slink = i; end
     if (cfg.Vga)        begin i++; ret.vga   = i; end
+    if (cfg.Usb)        begin i++; ret.usb   = i; end
     i++;
     ret.ext_base = i;
     ret.num_in = i + cfg.AxiExtNumMst;
@@ -384,6 +393,7 @@ package cheshire_pkg;
     aw_bt gpio;
     aw_bt slink;
     aw_bt vga;
+    aw_bt usb;
     aw_bt axirt;
     aw_bt irq_router;
     aw_bt [2**MaxCoresWidth-1:0] bus_err;
@@ -408,6 +418,7 @@ package cheshire_pkg;
     if (cfg.Gpio)         begin i++; ret.gpio       = i; r++; ret.map[r] = '{i, 'h0300_5000, 'h0300_6000}; end
     if (cfg.SerialLink)   begin i++; ret.slink      = i; r++; ret.map[r] = '{i, AmSlink, AmSlink +'h1000}; end
     if (cfg.Vga)          begin i++; ret.vga        = i; r++; ret.map[r] = '{i, 'h0300_7000, 'h0300_8000}; end
+    if (cfg.Usb)          begin i++; ret.usb        = i; r++; ret.map[r] = '{i, 'h0300_8000, 'h0300_9000}; end
     if (cfg.IrqRouter)    begin i++; ret.irq_router = i; r++; ret.map[r] = '{i, 'h0208_0000, 'h020c_0000}; end
     if (cfg.AxiRt)        begin i++; ret.axirt      = i; r++; ret.map[r] = '{i, 'h020c_0000, 'h0210_0000}; end
     if (cfg.Clic) for (int j = 0; j < cfg.NumCores; j++) begin
@@ -452,6 +463,7 @@ package cheshire_pkg;
 
   // Choose static colocation of IDs based on how heavily used and/or critical they are
   function automatic cva6_id_map_t gen_cva6_id_map(cheshire_cfg_t cfg);
+    int unsigned DefaultMapEntry[2] = '{0, 0};
     case (cfg.AxiMstIdWidth)
       // Provide exclusive ID to I-cache to prevent fetch blocking
       1: return '{'{Cva6IdBypMmu, 0}, '{Cva6IdBypLoad, 0}, '{Cva6IdBypAccel, 0}, '{Cva6IdBypStore, 0},
@@ -462,8 +474,9 @@ package cheshire_pkg;
       // Compress output ID space without any serialization
       3: return '{'{Cva6IdBypMmu, 0}, '{Cva6IdBypLoad, 1}, '{Cva6IdBypAccel, 6}, '{Cva6IdBypStore, 2},
                   '{Cva6IdBypAmo, 3}, '{Cva6IdICache,  4}, '{Cva6IdDCache,   5}};
-      // With 4b of ID or more, no remapping is necessary
-      default: return '{default: '{0, 0}};
+      // With 4b of ID or more, no remapping is necessary; return redundant 0 -> 0 ID remaps.
+      // This leaves ID mapping unaltered only if `MstIdBaseOffset` in `axi_id_serialize` is 0.
+      default: return '{default: DefaultMapEntry};
     endcase
   endfunction
 
@@ -508,8 +521,8 @@ package cheshire_pkg;
       EnableAccelerator     : 0,
       RVS                   : 1,
       RVU                   : 1,
-      HaltAddress           : AmDbg + 'h800,
-      ExceptionAddress      : AmDbg + 'h808,
+      HaltAddress           : 'h800, // Relative to AmDbg
+      ExceptionAddress      : 'h810, // Relative to AmDbg
       RASDepth              : cfg.Cva6RASDepth,
       BTBEntries            : cfg.Cva6BTBEntries,
       BHTEntries            : cfg.Cva6BHTEntries,
@@ -594,6 +607,7 @@ package cheshire_pkg;
     Dma               : 1,
     SerialLink        : 1,
     Vga               : 1,
+    Usb               : 1,
     AxiRt             : 0,
     Clic              : 0,
     IrqRouter         : 0,
@@ -616,11 +630,11 @@ package cheshire_pkg;
     LlcAmoPostCut     : 1,
     LlcOutConnect     : 1,
     LlcOutRegionStart : 'h8000_0000,
-    LlcOutRegionEnd   : 'h1_0000_0000,
-    // VGA: RGB332
-    VgaRedWidth       : 3,
-    VgaGreenWidth     : 3,
-    VgaBlueWidth      : 2,
+    LlcOutRegionEnd   : 64'h1_0000_0000,
+    // VGA: RGB565
+    VgaRedWidth       : 5,
+    VgaGreenWidth     : 6,
+    VgaBlueWidth      : 5,
     VgaHCountWidth    : 24, // TODO: Default is 32; is this needed?
     VgaVCountWidth    : 24, // TODO: See above
     VgaBufferDepth    : 16,
@@ -629,11 +643,15 @@ package cheshire_pkg;
     SlinkMaxTxnsPerId : 4,
     SlinkMaxUniqIds   : 4,
     SlinkMaxClkDiv    : 1024,
-    SlinkRegionStart  : 'h1_0000_0000,
-    SlinkRegionEnd    : 'h2_0000_0000,
+    SlinkRegionStart  : 64'h1_0000_0000,
+    SlinkRegionEnd    : 64'h2_0000_0000,
     SlinkTxAddrMask   : 'hFFFF_FFFF,
     SlinkTxAddrDomain : 'h0000_0000,
     SlinkUserAmoBit   : 1,  // Convention: lower AMO bits for cores, MSB for serial link
+    // USB config
+    UsbDmaMaxReads    : 16,
+    UsbAddrMask       : 'hFFFF_FFFF,
+    UsbAddrDomain     : 'h0000_0000,
     // DMA config
     DmaConfMaxReadTxns  : 4,
     DmaConfMaxWriteTxns : 4,

@@ -18,7 +18,7 @@ jobs:
       uses: actions/checkout@v3
     -
       name: Check license
-      uses: pulp-platform/pulp-actions/lint-license@v2
+      uses: pulp-platform/pulp-actions/lint-license@v2.4.1
       with:
         license: |
           Copyright (\d{4}(-\d{4})?\s)?(ETH Zurich and University of Bologna|lowRISC contributors).
@@ -39,6 +39,7 @@ jobs:
       uses: chipsalliance/verible-linter-action@main
       with:
         paths: hw
+        exclude_paths: hw/future/UsbOhciAxi4.v
         extra_args: "--waiver_files .github/verible.waiver"
         github_token: ${{ secrets.GITHUB_TOKEN }}
         fail_on_error: true
@@ -69,3 +70,22 @@ jobs:
         exclude: |
           ./sw/include/regs/*.h
           ./target/sim/src/elfloader.cpp
+
+  lint-tcl:
+    runs-on: ubuntu-latest
+    steps:
+    -
+      name: Checkout
+      uses: actions/checkout@v3
+    -
+      name: Install Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.9
+        cache: pip
+    -
+      name: Install Python requirements
+      run: pip install -r requirements.txt
+    -
+      name: Run Tcllint
+      run: tclint .  --style-spaces-in-braces --style-line-length 100

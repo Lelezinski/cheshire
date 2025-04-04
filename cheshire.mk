@@ -7,9 +7,16 @@
 # Paul Scheffler <paulsc@iis.ee.ethz.ch>
 
 BENDER ?= bender
+VLOGAN ?= vlogan
 
-VLOG_ARGS ?= -suppress 2583 -suppress 13314
-VSIM      ?= vsim
+# Caution: Questasim requires this to point to the *actual* compiler install path
+CXX_PATH := $(shell which $(CXX))
+
+VLOG_ARGS   ?= -suppress 2583 -suppress 13314 -timescale 1ns/1ps
+VLOGAN_ARGS ?= -kdb -nc -assert svaext +v2k -timescale=1ns/1ps
+
+# Common Bender flags for Cheshire RTL
+CHS_BENDER_RTL_FLAGS ?= -t rtl -t cva6 -t cv64a6_imafdcsclic_sv39
 
 # Define used paths (prefixed to avoid name conflicts)
 CHS_ROOT      ?= $(shell $(BENDER) path cheshire)
@@ -18,11 +25,12 @@ CHS_SLINK_DIR := $(shell $(BENDER) path serial_link)
 CHS_LLC_DIR   := $(shell $(BENDER) path axi_llc)
 
 # Define paths used in dependencies
-OTPROOT      := $(shell $(BENDER) path opentitan_peripherals)
-CLINTROOT    := $(shell $(BENDER) path clint)
-AXIRTROOT    := $(shell $(BENDER) path axi_rt)
-AXI_VGA_ROOT := $(shell $(BENDER) path axi_vga)
-IDMA_ROOT    := $(shell $(BENDER) path idma)
+OTPROOT           := $(shell $(BENDER) path opentitan_peripherals)
+CLINTROOT         := $(shell $(BENDER) path clint)
+AXIRTROOT         := $(shell $(BENDER) path axi_rt)
+AXI_VGA_ROOT      := $(shell $(BENDER) path axi_vga)
+IDMA_ROOT         := $(shell $(BENDER) path idma)
+DRAM_RTL_SIM_ROOT := $(shell $(BENDER) path dram_rtl_sim)
 
 REGTOOL ?= $(CHS_REG_DIR)/vendor/lowrisc_opentitan/util/regtool.py
 
@@ -44,17 +52,20 @@ ifeq ($(shell test -f $(BENDER_ROOT)/.chs_deps && echo 1),)
 endif
 
 # Running this target will reset dependencies (without updating the checked-in Bender.lock)
+CHS_PHONY += chs-clean-deps
 chs-clean-deps:
 	rm -rf .bender
-	cd $(CHS_ROOT) && git submodule deinit -f sw/deps/printf
+	cd $(CHS_ROOT) && rm -rf target/sim/models target/sim/dramsys
+	cd $(CHS_ROOT) && git submodule deinit -f sw/deps/*
 
 ######################
 # Nonfree components #
 ######################
 
 CHS_NONFREE_REMOTE ?= git@iis-git.ee.ethz.ch:pulp-restricted/cheshire-nonfree.git
-CHS_NONFREE_COMMIT ?= 99973e8
+CHS_NONFREE_COMMIT ?= 99aa8d9
 
+CHS_PHONY += chs-nonfree-init
 chs-nonfree-init:
 	git clone $(CHS_NONFREE_REMOTE) $(CHS_ROOT)/nonfree
 	cd $(CHS_ROOT)/nonfree && git checkout $(CHS_NONFREE_COMMIT)
@@ -87,11 +98,11 @@ $(OTPROOT)/.generated: $(CHS_ROOT)/hw/rv_plic.cfg.hjson
 	flock -x $@ sh -c "cp $< $(dir $@)/src/rv_plic/; $(MAKE) -j1 otp" && touch $@
 
 # AXI RT
-AXIRT_NUM_MGRS ?= 8
+AXIRT_NUM_MGRS ?= 6
 AXIRT_NUM_SUBS ?= 2
 include $(AXIRTROOT)/axirt.mk
 $(AXIRTROOT)/.generated:
-	flock -x $@ $(MAKE) axirt_regs && touch $@
+	flock -x $@ $(MAKE) -B axirt_regs && touch $@
 
 # AXI VGA
 include $(AXI_VGA_ROOT)/axi_vga.mk
@@ -103,6 +114,10 @@ $(CHS_SLINK_DIR)/.generated: $(CHS_ROOT)/hw/serial_link.hjson
 	cp $< $(dir $@)/src/regs/serial_link_single_channel.hjson
 	flock -x $@ $(MAKE) -C $(CHS_SLINK_DIR) update-regs BENDER="$(BENDER)" && touch $@
 
+# iDMA
+include $(IDMA_ROOT)/idma.mk
+
+CHS_HW_ALL += $(IDMA_FULL_RTL)
 CHS_HW_ALL += $(CHS_ROOT)/hw/regs/cheshire_reg_pkg.sv $(CHS_ROOT)/hw/regs/cheshire_reg_top.sv
 CHS_HW_ALL += $(CLINTROOT)/.generated
 CHS_HW_ALL += $(OTPROOT)/.generated
@@ -133,8 +148,12 @@ CHS_BOOTROM_ALL += $(CHS_ROOT)/hw/bootrom/cheshire_bootrom.sv $(CHS_ROOT)/hw/boo
 ##############
 
 $(CHS_ROOT)/target/sim/vsim/compile.cheshire_soc.tcl: $(CHS_ROOT)/Bender.yml
-	$(BENDER) script vsim -t sim -t cv64a6_imafdcsclic_sv39 -t test -t cva6 -t rtl --vlog-arg="$(VLOG_ARGS)" > $@
-	echo 'vlog "$(realpath $(CHS_ROOT))/target/sim/src/elfloader.cpp" -ccflags "-std=c++11"' >> $@
+	$(BENDER) script vsim -t sim -t test $(CHS_BENDER_RTL_FLAGS) --vlog-arg="$(VLOG_ARGS)" > $@
+	echo 'vlog "$(realpath $(CHS_ROOT))/target/sim/src/elfloader.cpp" -ccflags "-std=c++11" -cpppath "$(CXX_PATH)"' >> $@
+
+$(CHS_ROOT)/target/sim/vcs/compile.cheshire_soc.sh: $(CHS_ROOT)/Bender.yml
+	$(BENDER) script vcs -t sim -t test $(CHS_BENDER_RTL_FLAGS) --vlog-arg="$(VLOGAN_ARGS)" --vlogan-bin="$(VLOGAN)" > $@
+	chmod +x $@
 
 .PRECIOUS: $(CHS_ROOT)/target/sim/models
 $(CHS_ROOT)/target/sim/models:
@@ -154,6 +173,16 @@ $(CHS_ROOT)/target/sim/models/24FC1025.v: $(CHS_ROOT)/Bender.yml | $(CHS_ROOT)/t
 CHS_SIM_ALL += $(CHS_ROOT)/target/sim/models/s25fs512s.v
 CHS_SIM_ALL += $(CHS_ROOT)/target/sim/models/24FC1025.v
 CHS_SIM_ALL += $(CHS_ROOT)/target/sim/vsim/compile.cheshire_soc.tcl
+CHS_SIM_ALL += $(CHS_ROOT)/target/sim/vcs/compile.cheshire_soc.sh
+
+###########
+# DRAMSys #
+###########
+
+DRAMSYS_ROOT ?= $(CHS_ROOT)/target/sim/dramsys
+include $(DRAM_RTL_SIM_ROOT)/dram_rtl_sim.mk
+
+CHS_DRAMSYS_ALL += $(DRAMSYS_ROOT)/build/lib/libsystemc.so
 
 #############
 # FPGA Flow #
@@ -165,8 +194,6 @@ include $(CHS_ROOT)/target/xilinx/xilinx.mk
 # Phonies (KEEP AT END OF FILE) #
 #################################
 
-.PHONY: chs-all chs-nonfree-init chs-clean-deps chs-sw-all chs-hw-all chs-bootrom-all chs-sim-all chs-xilinx-all
-
 CHS_ALL += $(CHS_SW_ALL) $(CHS_HW_ALL) $(CHS_SIM_ALL)
 
 chs-all:         $(CHS_ALL)
@@ -174,4 +201,9 @@ chs-sw-all:      $(CHS_SW_ALL)
 chs-hw-all:      $(CHS_HW_ALL)
 chs-bootrom-all: $(CHS_BOOTROM_ALL)
 chs-sim-all:     $(CHS_SIM_ALL)
+chs-dramsys-all: $(CHS_DRAMSYS_ALL)
 chs-xilinx-all:  $(CHS_XILINX_ALL)
+
+CHS_PHONY += chs-all chs-sw-all chs-hw-all chs-bootrom-all chs-sim-all chs-dramsys-all chs-xilinx-all
+
+.PHONY: $(CHS_PHONY)

@@ -8,7 +8,8 @@
 
 module fixture_cheshire_soc #(
   /// The selected simulation configuration from the `tb_cheshire_pkg`.
-  parameter int unsigned SelectedCfg = 32'd0
+  parameter int unsigned SelectedCfg = 32'd0,
+  parameter bit          UseDramSys  = 1'b0
 );
 
   `include "cheshire/typedef.svh"
@@ -133,7 +134,15 @@ module fixture_cheshire_soc #(
     .vga_vsync_o        ( ),
     .vga_red_o          ( ),
     .vga_green_o        ( ),
-    .vga_blue_o         ( )
+    .vga_blue_o         ( ),
+    .usb_clk_i          ( 1'b0 ),
+    .usb_rst_ni         ( 1'b1 ),
+    .usb_dm_i           ( '0 ),
+    .usb_dm_o           ( ),
+    .usb_dm_oe_o        ( ),
+    .usb_dp_i           ( '0 ),
+    .usb_dp_o           ( ),
+    .usb_dp_oe_o        ( )
   );
 
   ////////////////////////
@@ -160,6 +169,7 @@ module fixture_cheshire_soc #(
 
   vip_cheshire_soc #(
     .DutCfg            ( DutCfg ),
+    .UseDramSys        ( UseDramSys ),
     .axi_ext_llc_req_t ( axi_llc_req_t ),
     .axi_ext_llc_rsp_t ( axi_llc_rsp_t ),
     .axi_ext_mst_req_t ( axi_mst_req_t ),

@@ -11,6 +11,12 @@ We currently provide working setups for:
 
 We are working on support for more boards in the future.
 
+We assume that the `VIVADO` environment variable points to the main binary of your Vivado installation. Before proceeding, you can set this variable for your current shell as follows:
+
+```
+export VIVADO="/path/to/your/vivado"
+```
+
 ## Implementation
 
 Generate the bitstream `target/xilinx/out/cheshire.<myboard>.bit` for your desired board by running:
@@ -124,7 +130,7 @@ The second command only ensures correctness of the partition layout; it moves th
 
 Insert your SD card and reset into boot mode 1. You should see a `Hello World!` UART output.
 
-### Boot from onboard flash (`vcu128` only)
+### Boot from onboard flash
 
 Build a GPT disk image for your desired binary as explained above, then flash it to your board's flash. For `helloworld`:
 
@@ -134,7 +140,7 @@ make CHS_XILINX_FLASH_BIN=sw/tests/helloworld.gpt.bin chs-xilinx-flash-<myboard>
 
 Flashing an image should take about 10 minutes. *Note that after flashing, your board's bitstream must be reprogrammed* as it is overridden for this task.
 
-If the image given by `CHS_XILINX_FLASH_BIN` does not exist, `make` will attempt to build it before flashing. If `CHS_XILINX_FLASH_BIN` is not provided, the target assumes the board's Linux image by default.
+If the image given by `CHS_XILINX_FLASH_BIN` does not exist, `make` will attempt to build it before flashing. If `CHS_XILINX_FLASH_BIN` is not provided, the target assumes the default Linux image for your board.
 
 After flashing your disk image and reprogramming your bitstream, reset into boot mode 2. For `helloworld`, you should again see a `Hello World!` UART output.
 
@@ -159,7 +165,9 @@ To create a full Linux disk image from the ZSL, your board's device tree, the fi
 make ${CHS_ROOT}/sw/boot/linux.<myboard>.gpt.bin
 ```
 
-where `CHS_ROOT` is the root of the Cheshire repository. Flash this image to an SD card or SPI flash as described in the preceding sections, then reset into the boot mode corresponding for your boot medium. You should first see the ZSL print on the UART:
+where `CHS_ROOT` is the root of the Cheshire repository. Note that for some boards, additional images with different configurations (i.e. `linux.<myboard>_<myconfig>.gpt.bin`) may be available.
+
+Flash your image to an SD card or SPI flash as described in the preceding sections, then reset into the boot mode corresponding for your boot medium. You should first see the ZSL print on the UART:
 
 ```
  /\___/\       Boot mode:       1
@@ -171,4 +179,5 @@ where `CHS_ROOT` is the root of the Cheshire repository. Flash this image to an 
 (    P      )
 (           ))))))))))
 ```
+
 You should then boot through OpenSBI, U-Boot, and Linux until you are dropped into a shell.
