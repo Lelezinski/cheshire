@@ -369,4 +369,15 @@ long semihost_readline(long fd, char *buf, long max_len)
 	return total_read;
 }
 
+/**
+ * @brief Force a break in the GDB execution.
+ *
+ * This function triggers a semihosting breakpoint that halts the execution
+ * in GDB. Execution can be resumed by continuing in the debugger.
+ */
+__attribute__((used)) void semihost_break(void)
+{
+	semihost_exec(SEMIHOST_SYSTEM, NULL);
+}
+
 #endif /* SEMIHOST_H */

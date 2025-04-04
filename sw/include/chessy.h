@@ -9,8 +9,8 @@
 #include <stdint.h>
 #include <string.h>
 
-#define FILE_TO_MESSY "/tmp/chessy/to_messy"
-#define FILE_FROM_MESSY "/tmp/chessy/from_messy"
+#define FILE_REQ_ADDRESS "/tmp/chessy/req_address"
+#define FILE_REQ_DATA "/tmp/chessy/req_data"
 #define MAX_PACKET_SIZE 1024
 
 #define ERR_INVALID_PACKET -2
@@ -65,195 +65,128 @@ static long string_to_long(const char *str)
 /**
  * @brief Initialize the Chessy communication by opening files and reading the initial timestamp.
  *
- * @param fd_to_messy Pointer to store the file descriptor for writing.
- * @param fd_from_messy Pointer to store the file descriptor for reading.
- * @return 0 on success, -1 on failure.
+ * @param fd_req_address Pointer to store the file descriptor for request addresses.
+ * @param fd_req_data Pointer to store the file descriptor for request data.
+ * @return 0 on success, negative error code on failure.
  */
-int chessy_init(int *fd_to_messy, int *fd_from_messy)
+int chessy_init(int *fd_req_address, int *fd_req_data)
 {
-    // Open the file for writing
-    *fd_to_messy = semihost_open(FILE_TO_MESSY, SEMIHOST_OPEN_WB);
-    if (*fd_to_messy < 0)
+    // Open the request address file
+    *fd_req_address = semihost_open(FILE_REQ_ADDRESS, SEMIHOST_OPEN_WB_PLUS);
+    if (*fd_req_address < 0)
     {
-        return -1; // Failed to open file for writing
+        return ERR_INVALID_FD; // Invalid file descriptor
     }
-
-    // Open the file for reading
-    *fd_from_messy = semihost_open(FILE_FROM_MESSY, SEMIHOST_OPEN_RB);
-    if (*fd_from_messy < 0)
+    // Open the request data file
+    *fd_req_data = semihost_open(FILE_REQ_DATA, SEMIHOST_OPEN_WB_PLUS);
+    if (*fd_req_data < 0)
     {
-        semihost_close(*fd_to_messy); // Close the first file
-        return -1;                    // Failed to open file for reading
+        semihost_close(*fd_req_address); // Close the first file
+        return ERR_INVALID_FD;          // Invalid file descriptor
     }
 
     // Read the initial timestamp from clint_get_mtime()
     last_cycle_counter = clint_get_mtime();
-    if (last_cycle_counter == 0)
-    {
-        semihost_close(*fd_to_messy);   // Close the first file
-        semihost_close(*fd_from_messy); // Close the second file
-        return ERR_INVALID_TIMESTAMP;   // Invalid timestamp
-    }
 
     return 0; // Success
 }
 
 /**
- * @brief Send a Chessy packet to the file.
+ * @brief Request a read at a given address to Messy.
  *
- * @param fd File descriptor of the opened file.
- * @param packet Pointer to the Chessy packet to send.
- * @return 0 on success, -1 on failure.
+ * @param fd_req_address File descriptor for request addresses.
+ * @param fd_req_data File descriptor for request data.
+ * @param address Pointer to store the address to read from.
+ * @param data Pointer to store the read data.
+ * @return Length of data read on success, negative error code on failure.
  */
-int chessy_send(int fd, struct chessy_packet *packet)
+int chessy_request_read(int fd_req_address, int fd_req_data, uint64_t *address, uint8_t *data)
 {
-    // Create a JSON string from the packet data, leaving the first 4 bytes for length
-    char json_string[MAX_PACKET_SIZE];
-    snprintf(json_string + 4, sizeof(json_string) - 4, "{\"timestamp\":%ld,\"command\":\"%s\",\"data\":\"%s\"}",
-             packet->timestamp, packet->command, packet->data);
+    // Update the last cycle counter
+    last_cycle_counter = clint_get_mtime();
+    uint64_t buffer[2] = {last_cycle_counter, *address};
 
-    // Calculate the length of the JSON string
-    int length = strlen(json_string + 4);
-
-    // Write the length into the first 4 bytes
-    json_string[0] = (length >> 24) & 0xFF;
-    json_string[1] = (length >> 16) & 0xFF;
-    json_string[2] = (length >> 8) & 0xFF;
-    json_string[3] = length & 0xFF;
-
-    // Write the JSON string to the file
-    if (semihost_write(fd, json_string, length + 4) < 0)
+    // Write the timestamp and the address concatenated to the request address file
+    if (semihost_write(fd_req_address, (char *)buffer, sizeof(buffer)) < 0)
     {
         return -1; // Failed to write to file
     }
-    return 0; // Success
+
+    // Force a break to wait for the host to respond
+    semihost_break();
+
+    // Read the data from the request data file until EOF or MAX_PACKET_SIZE
+    int data_length = semihost_flen(fd_req_data);
+    if (data_length < 0)
+    {
+        return -2; // Failed to get file length
+    }
+    if (data_length > MAX_PACKET_SIZE)
+    {
+        return -3; // Packet too large
+    }
+    if (semihost_read(fd_req_data, (char *)data, data_length) < 0)
+    {
+        return -4; // Failed to read from file
+    }
+
+    return data_length; // Return the length of data read
 }
 
 /**
- * @brief Read a Chessy packet from the file.
+ * @brief Request a write at a given address to Messy.
  *
- * @param fd File descriptor of the opened file.
- * @param packet Pointer to the Chessy packet to read into.
- * @return 0 on success, -1 on failure.
+ * @param fd_req_address File descriptor for request addresses.
+ * @param fd_req_data File descriptor for request data.
+ * @param address Address to write to.
+ * @param data Data to write.
+ * @return 0 on success, negative error code on failure.
  */
-int chessy_receive(int fd, struct chessy_packet *packet)
+int chessy_request_write(int fd_req_address, int fd_req_data, uint64_t address, const char *data)
 {
-    // TODO: clean this, fix the json_string + 4 thing...
-    // Read the length of the packet
-    char length_buffer[4];
-    if (semihost_read(fd, length_buffer, 4) < 0)
+    // Update the last cycle counter
+    last_cycle_counter = clint_get_mtime();
+    uint64_t buffer[2] = {last_cycle_counter, address};
+
+    // Write the timestamp and the address concatenated to the request address file
+    if (semihost_write(fd_req_address, (char *)buffer, sizeof(buffer)) < 0)
     {
-        return -1; // Failed to read length
+        return -1; // Failed to write to file
     }
 
-    // Calculate the length of the packet
-    int length = (length_buffer[0] << 24) | (length_buffer[1] << 16) | (length_buffer[2] << 8) | length_buffer[3];
-
-    // Check if the length is valid
-    if (length > MAX_PACKET_SIZE - 4)
+    // Write the data to the request data file
+    if (semihost_write(fd_req_data, data, strlen(data)) < 0)
     {
-        return ERR_PACKET_TOO_LARGE; // Packet too large
+        return -2; // Failed to write to file
     }
 
-    // Read the packet data
-    char json_string[MAX_PACKET_SIZE];
-    if (semihost_read(fd, json_string + 4, length) < 0)
-    {
-        return -1; // Failed to read packet data
-    }
+    // Force a break to wait for the host to respond
+    semihost_break();
 
-    // Null-terminate the string
-    json_string[length + 4] = '\0';
-
-#ifdef DEBUG_LEVEL
-    // Print the received JSON string for debugging
-    semihost_printf("Received JSON: %s\n", json_string + 4);
-#endif
-
-    // Parse the JSON string into the packet structure
-    jsmn_parser parser;
-    jsmntok_t tokens[10];
-    jsmn_init(&parser);
-
-    int r = jsmn_parse(&parser, json_string + 4, strlen(json_string + 4), tokens, sizeof(tokens) / sizeof(tokens[0]));
-
-    if (r < 0)
-    {
-        return ERR_INVALID_PACKET; // Invalid JSON packet
-    }
-
-    // Extract values from tokens and fill the packet structure
-    for (int i = 1; i < r; i++)
-    {
-#ifdef DEBUG_LEVEL
-        // Print token content
-        semihost_printf("Token %d: %.*s, Value: %.*s\n", i,
-                       tokens[i].end - tokens[i].start, json_string + 4 + tokens[i].start,
-                       tokens[i + 1].end - tokens[i + 1].start, json_string + 4 + tokens[i + 1].start);
-#endif
-
-        if (tokens[i].type == JSMN_STRING && tokens[i].size == 1)
-        {
-            if (strncmp(json_string + 4 + tokens[i].start, "timestamp", tokens[i].end - tokens[i].start) == 0)
-            {
-            packet->timestamp = string_to_long(json_string + 4 + tokens[i + 1].start);
-            }
-            else if (strncmp(json_string + 4 + tokens[i].start, "command", tokens[i].end - tokens[i].start) == 0)
-            {
-            int length = tokens[i + 1].end - tokens[i + 1].start;
-            static char command_buffer[MAX_PACKET_SIZE];
-            strncpy(command_buffer, json_string + 4 + tokens[i + 1].start, length);
-            command_buffer[length] = '\0';
-            packet->command = command_buffer;
-            }
-            else if (strncmp(json_string + 4 + tokens[i].start, "data", tokens[i].end - tokens[i].start) == 0)
-            {
-            int length = tokens[i + 1].end - tokens[i + 1].start;
-            static char data_buffer[MAX_PACKET_SIZE];
-            strncpy(data_buffer, json_string + 4 + tokens[i + 1].start, length);
-            data_buffer[length] = '\0';
-            packet->data = data_buffer;
-            }
-            i++; // Skip the value token
-        }
-    }
-
-#ifdef DEBUG_LEVEL
-    // Print the parsed packet for debugging
-    semihost_printf("Parsed packet: timestamp=%ld, command=%s, data=%s\n",
-                   packet->timestamp, packet->command, packet->data);
-#endif
-
-    // Check if the packet is valid
-    if (packet->timestamp == 0 || packet->command == NULL || packet->data == NULL)
-    {
-        return ERR_INVALID_PACKET; // Invalid packet
-    }
-
-    return 0;
+    return 0; // Success
 }
 
 /**
  * @brief Close the Chessy communication by closing both file descriptors.
  *
- * @param fd_to_messy File descriptor for writing.
- * @param fd_from_messy File descriptor for reading.
+ * @param fd_req_address File descriptor for request addresses.
+ * @param fd_req_data File descriptor for request data.
  * @return 0 on success, -1 on failure.
  */
-int chessy_close(int fd_to_messy, int fd_from_messy)
+int chessy_close(int fd_req_address, int fd_req_data)
 {
     int result = 0;
 
-    // Close the file descriptor for writing
-    if (semihost_close(fd_to_messy) < 0)
+    // Close the file descriptor for request addresses
+    if (semihost_close(fd_req_address) < 0)
     {
-        result = -1; // Failed to close the write file
+        result = -1; // Failed to close the request address file
     }
 
-    // Close the file descriptor for reading
-    if (semihost_close(fd_from_messy) < 0)
+    // Close the file descriptor for request data
+    if (semihost_close(fd_req_data) < 0)
     {
-        result = -1; // Failed to close the read file
+        result = -1; // Failed to close the request data file
     }
 
     return result; // Return 0 if both succeeded, -1 if any failed
