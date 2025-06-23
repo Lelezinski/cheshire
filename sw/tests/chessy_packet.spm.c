@@ -49,6 +49,8 @@ int main()
     }
     semihost_printf("Data read from address 0x%lx:\n%s\n", sensor_address, data);
 
+    semihost_printf("[2] Data read from address 0x%lx:\n%s\n", sensor_address, data);
+
     // Print elapsed time
     uint64_t current_cycle_counter = clint_get_mtime();
     uint64_t elapsed_time = current_cycle_counter - last_cycle_counter;
