@@ -54,13 +54,6 @@ packages:
     - axi
     - common_cells
     - register_interface
-  axi_stream:
-    revision: 54891ff40455ca94a37641b9da4604647878cc07
-    version: 0.1.1
-    source:
-      Git: https://github.com/pulp-platform/axi_stream.git
-    dependencies:
-    - common_cells
   axi_vga:
     revision: 4d3e70d4f47bb74edc1ab68d99ffc02382e0fb9e
     version: 0.1.4
@@ -133,16 +126,14 @@ packages:
     dependencies:
     - common_cells
   idma:
-    revision: ff5d56fffb3767814db88d6bf8f381974ea33aa5
-    version: 0.6.4
+    revision: ca1b28816a3706be0bf9ce01378246d5346384f0
+    version: 0.5.1
     source:
       Git: https://github.com/pulp-platform/iDMA.git
     dependencies:
     - axi
-    - axi_stream
     - common_cells
     - common_verification
-    - obi
     - register_interface
   irq_router:
     revision: d1d31350b24f3965b3a51e1bc96c71eb34e94db3
@@ -153,22 +144,6 @@ packages:
     - axi
     - common_cells
     - register_interface
-  obi:
-    revision: 0155fc34e900c7c884e081c0a1114a247937ff69
-    version: 0.1.7
-    source:
-      Git: https://github.com/pulp-platform/obi.git
-    dependencies:
-    - common_cells
-    - common_verification
-  obi_peripherals:
-    revision: 079894a6cbd4e544c477643d184a4c340bd4e391
-    version: 0.1.1
-    source:
-      Git: https://github.com/pulp-platform/obi_peripherals.git
-    dependencies:
-    - common_cells
-    - obi
   opentitan_peripherals:
     revision: cd3153de2783abd3d03d0595e6c4b32413c62f14
     version: 0.4.0

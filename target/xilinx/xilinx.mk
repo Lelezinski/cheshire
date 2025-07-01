@@ -42,7 +42,7 @@ CHS_XILINX_IPS_vcu128   := clkwiz vio ddr4
 CHS_XILINX_IPS_zcu102	:= clkwiz vio
 
 $(CHS_XILINX_DIR)/scripts/add_sources.%.tcl: $(CHS_ROOT)/Bender.yml
-	$(BENDER) script vivado -t fpga -t $* $(CHS_BENDER_RTL_FLAGS) > $@
+	$(BENDER) script vivado -t fpga -t cv64a6_imafdcsclic_sv39 -t cva6 -t $* > $@
 
 define chs_xilinx_bit_rule
 $$(CHS_XILINX_DIR)/out/%.$(1).bit: \
