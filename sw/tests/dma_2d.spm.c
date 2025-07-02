@@ -9,6 +9,7 @@
 #include "util.h"
 #include "dif/clint.h"
 #include "dif/dma.h"
+#include "semihost.h"
 
 int main(void) {
     // Immediately return an error if DMA is not present
@@ -33,11 +34,14 @@ int main(void) {
 
     // Issue blocking 2D memcpy (exclude null terminator from source)
     sys_dma_2d_blk_memcpy((uintptr_t)(void *)dst, (uintptr_t)(void *)src, sizeof(src_cached) - 4, 7,
-                          1, 4, DMA_CONF_DECOUPLE_NONE);
+                          1, 4, DMA_CONF_DECOUPLE);
 
     // Check destination string
     int errors = sizeof(gold);
-    for (unsigned i = 0; i < sizeof(gold); ++i) errors -= (dst[i] == gold[i]);
+    for (unsigned i = 0; i < sizeof(gold); ++i) {
+        errors -= (dst[i] == gold[i]);
+        semihost_printf("dst[%d] = '%c' (expected '%c')\n", i, dst[i], gold[i]);
+    }
 
     return errors;
 }

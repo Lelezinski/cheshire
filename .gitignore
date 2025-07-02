@@ -11,6 +11,8 @@ nonfree/
 # Dependency files
 .bender/
 
+.venv/
+
 # Documentation site
 site/
 
