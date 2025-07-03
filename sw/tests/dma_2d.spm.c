@@ -9,14 +9,25 @@
 #include "util.h"
 #include "dif/clint.h"
 #include "dif/dma.h"
-#include "semihost.h"
 
-int main(void) {
+#define DMA_2D_ROWS         5
+#define DMA_2D_COLS         2
+#define DMA_2D_SRC_STRIDE   2
+#define DMA_2D_DST_STRIDE   3
+
+#define DEBUG_THIS_TEST 0
+#if DEBUG_THIS_TEST
+#include "printf.h"
+#endif
+
+int main(void)
+{
     // Immediately return an error if DMA is not present
     CHECK_ASSERT(-1, chs_hw_feature_present(CHESHIRE_HW_FEATURES_DMA_BIT));
 
-    volatile char src_cached[] = "This is a DMA test";
-    volatile char gold[] = "This ishis is is is as is a DMA test!";
+    // This test takes 0-9 numbers and copies them, spacing them in blocks of twos, through the 2D DMA.
+    volatile char src_cached[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '\0'};
+    volatile char gold[]       = {'0', '1', 0, '2', '3', 0, '4', '5', 0, '6', '7', 0, '8', '9', '\0'};
 
     // Allocate destination memory in SPM
     volatile char dst_cached[sizeof(gold)];
@@ -26,22 +37,35 @@ int main(void) {
     volatile char *dst = dst_cached + 0x04000000;
 
     // Copy from cached to uncached source to ensure it is DMA-accessible
-    for (unsigned i = 0; i < sizeof(src_cached); ++i) src[i] = src_cached[i];
+    for (unsigned i = 0; i < sizeof(src_cached); ++i)
+        src[i] = src_cached[i];
 
     // Pre-write finishing "!\0" to guard against overlength transfers
-    dst[sizeof(gold) - 2] = '!';
     dst[sizeof(gold) - 1] = '\0';
 
-    // Issue blocking 2D memcpy (exclude null terminator from source)
-    sys_dma_2d_blk_memcpy((uintptr_t)(void *)dst, (uintptr_t)(void *)src, sizeof(src_cached) - 4, 7,
-                          1, 4, DMA_CONF_DECOUPLE);
+    // Issue blocking 2D memcpy
+    sys_dma_2d_blk_memcpy(
+        (uintptr_t)(void *)dst,
+        (uintptr_t)(void *)src,
+        DMA_2D_COLS,
+        DMA_2D_DST_STRIDE,
+        DMA_2D_SRC_STRIDE,
+        DMA_2D_ROWS
+    );
 
     // Check destination string
     int errors = sizeof(gold);
     for (unsigned i = 0; i < sizeof(gold); ++i) {
-        errors -= (dst[i] == gold[i]);
-        semihost_printf("dst[%d] = '%c' (expected '%c')\n", i, dst[i], gold[i]);
+        if (dst[i] == gold[i]) {
+            errors--;
+#if DEBUG_THIS_TEST
+            printf("dst[%u]\t= '%c'\t(correct)\n", i, dst[i]);
+#endif
+        } else {
+#if DEBUG_THIS_TEST
+            printf("dst[%u]\t= '%c'\t(expected '%c')\n", i, dst[i], gold[i]);
+#endif
+        }
     }
-
     return errors;
 }

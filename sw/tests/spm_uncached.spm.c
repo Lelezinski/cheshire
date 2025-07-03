@@ -32,7 +32,7 @@ int main(void) {
 
     // Copy payload2 to payload1 using the DMA, overwriting it.
     sys_dma_2d_blk_memcpy((uintptr_t)(void *)(&payload1), (uintptr_t)(void *)(&payload2), 64, 0, 0,
-                          1, DMA_CONF_DECOUPLE);
+                          1);
 
     // Execute payload1 again from uncached SPM.
     // Since this region is uncached, the DMA-overwritten code should run and 2 should be returned.

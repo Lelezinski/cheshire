@@ -5,6 +5,8 @@
 // Alessandro Ottaviano <aottaviano@iis.ee.ethz.ch>
 // Thomas Benz <tbenz@iis.ee.ethz.ch>
 
+#pragma once
+
 #include <stdint.h>
 #include "regs/idma.h"
 #include "params.h"
@@ -36,14 +38,14 @@
     extern volatile uint64_t *NAME##_dma_dst_stride_ptr(void); \
     extern volatile uint64_t *NAME##_dma_num_reps_ptr(void); \
 \
-    extern uint64_t NAME##_dma_memcpy(uint64_t dst, uint64_t src, uint64_t size, uint64_t cfg); \
-    extern void NAME##_dma_blk_memcpy(uint64_t dst, uint64_t src, uint64_t size, uint64_t cfg); \
+    extern uint64_t NAME##_dma_memcpy(uint64_t dst, uint64_t src, uint64_t size); \
+    extern void NAME##_dma_blk_memcpy(uint64_t dst, uint64_t src, uint64_t size); \
     extern uint64_t NAME##_dma_2d_memcpy(uint64_t dst, uint64_t src, uint64_t size, \
                                          uint64_t dst_stride, uint64_t src_stride, \
-                                         uint64_t num_reps, uint64_t cfg); \
+                                         uint64_t num_reps); \
     extern void NAME##_dma_2d_blk_memcpy(uint64_t dst, uint64_t src, uint64_t size, \
                                          uint64_t dst_stride, uint64_t src_stride, \
-                                         uint64_t num_reps, uint64_t cfg); \
+                                         uint64_t num_reps); \
 \
     inline volatile uint64_t *NAME##_dma_src_ptr(void) { \
         return (volatile uint64_t *)DMA_SRC_ADDR(BASE_ADDR); \
@@ -76,7 +78,7 @@
         return (volatile uint64_t *)DMA_NUM_REPS_ADDR(BASE_ADDR); \
     } \
 \
-    inline uint64_t NAME##_dma_memcpy(uint64_t dst, uint64_t src, uint64_t size, uint64_t conf) { \
+    inline uint64_t NAME##_dma_memcpy(uint64_t dst, uint64_t src, uint64_t size) { \
         *(NAME##_dma_src_ptr()) = (uint64_t)src; \
         *(NAME##_dma_dst_ptr()) = (uint64_t)dst; \
         *(NAME##_dma_num_bytes_ptr()) = size; \
@@ -88,8 +90,8 @@
         return *(NAME##_dma_nextid_ptr()); \
     } \
 \
-    inline void NAME##_dma_blk_memcpy(uint64_t dst, uint64_t src, uint64_t size, uint64_t conf) { \
-        volatile uint64_t tf_id = NAME##_dma_memcpy(dst, src, size, conf); \
+    inline void NAME##_dma_blk_memcpy(uint64_t dst, uint64_t src, uint64_t size) { \
+        volatile uint64_t tf_id = NAME##_dma_memcpy(dst, src, size); \
         while (*(NAME##_dma_done_ptr()) != tf_id) { \
             asm volatile("nop"); \
         } \
@@ -97,14 +99,11 @@
 \
     inline uint64_t NAME##_dma_2d_memcpy(uint64_t dst, uint64_t src, uint64_t size, \
                                          uint64_t dst_stride, uint64_t src_stride, \
-                                         uint64_t num_reps, uint64_t conf) { \
+                                         uint64_t num_reps) { \
         *(NAME##_dma_src_ptr()) = (uint64_t)src; \
         *(NAME##_dma_dst_ptr()) = (uint64_t)dst; \
         *(NAME##_dma_num_bytes_ptr()) = size; \
-        *(NAME##_dma_conf_ptr()) = \
-            (DMA_CONF_DECOUPLE << IDMA_REG64_2D_FRONTEND_CONF_DECOUPLE_BIT) | \
-            (DMA_CONF_DEBURST << IDMA_REG64_2D_FRONTEND_CONF_DEBURST_BIT) | \
-            (DMA_CONF_SERIALIZE << IDMA_REG64_2D_FRONTEND_CONF_SERIALIZE_BIT); \
+        *(NAME##_dma_conf_ptr()) = 0b10; \
         *(NAME##_dma_src_stride_ptr()) = src_stride; \
         *(NAME##_dma_dst_stride_ptr()) = dst_stride; \
         *(NAME##_dma_num_reps_ptr()) = num_reps; \
@@ -113,9 +112,9 @@
 \
     inline void NAME##_dma_2d_blk_memcpy(uint64_t dst, uint64_t src, uint64_t size, \
                                          uint64_t dst_stride, uint64_t src_stride, \
-                                         uint64_t num_reps, uint64_t conf) { \
+                                         uint64_t num_reps) { \
         volatile uint64_t tf_id = \
-            NAME##_dma_2d_memcpy(dst, src, size, dst_stride, src_stride, num_reps, conf); \
+            NAME##_dma_2d_memcpy(dst, src, size, dst_stride, src_stride, num_reps); \
         while (*(NAME##_dma_done_ptr()) != tf_id) { \
             asm volatile("nop"); \
         } \
