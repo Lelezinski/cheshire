@@ -6,22 +6,7 @@
 #include "util.h"
 #include "params.h"
 #include "dif/clint.h"
-
-__attribute__((optimize("O0"))) uint64_t read_sensor(volatile uint64_t* sensor_address)
-{
-    // Initialize return data with invalid value
-    volatile uint64_t sensor_data = 0xdeadbeef;
-    // Force a break to let the host modify data
-    __asm__ volatile("ebreak");
-
-    return sensor_data;
-}
-
-__attribute__((optimize("O0"))) void write_sensor(volatile uint64_t* sensor_address, volatile uint64_t sensor_data)
-{
-    // Force a break to let the host read data
-    __asm__ volatile("ebreak");
-}
+#include "chessy.h"
 
 /* ---------------------------------- MAIN ---------------------------------- */
 int main()
