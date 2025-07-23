@@ -11,32 +11,25 @@
 /* ---------------------------------- MAIN ---------------------------------- */
 int main()
 {
-    int ret;
-    volatile uint32_t rtc_freq = *reg32(&__base_regs, CHESHIRE_RTC_FREQ_REG_OFFSET);
-    uint64_t core_freq = clint_get_core_freq(rtc_freq, 2500);
-    uint64_t current_cycle_counter, last_cycle_counter, elapsed_time_ms;
-    
+    volatile uint64_t start_time, end_time;
     volatile const uint32_t magic_number = 420;
-    volatile uint32_t data;
+    volatile uint64_t data;
     volatile uint64_t* sensor_address = (volatile uint64_t*)((uint8_t*)&__base_regs + CHESHIRE_SCRATCH_2_REG_OFFSET);
     
     // Write data to sensor
-    last_cycle_counter = clint_get_mtime();
+    start_time = clint_get_mtime();
     write_sensor(sensor_address, magic_number);
-    current_cycle_counter = clint_get_mtime();
-    elapsed_time_ms = (current_cycle_counter - last_cycle_counter) * 1000 / core_freq;
+    end_time = clint_get_mtime();
     semihost_printf("Wrote data to sensor: %ld\n", magic_number);
-    semihost_printf("Elapsed time for write: %ld ms\n", elapsed_time_ms);
+    semihost_printf("Elapsed time for write: %ld ms\n", (end_time - start_time) / 1000);
 
     // Read data from sensor
-    last_cycle_counter = clint_get_mtime();
+    start_time = clint_get_mtime();
     data = read_sensor(sensor_address);
-    current_cycle_counter = clint_get_mtime();
-    elapsed_time_ms = (current_cycle_counter - last_cycle_counter) * 1000 / core_freq;
-    fence();
+    end_time = clint_get_mtime();
     semihost_printf("Read data from sensor: %ld\n", data);
-    semihost_printf("Elapsed time for read: %ld ms\n", elapsed_time_ms);
-    
+    semihost_printf("Elapsed time for read: %ld ms\n", (end_time - start_time) / 1000);
+
     while (1)
     {
         wfi(); 
