@@ -10,7 +10,7 @@
 #include "dif/uart.h"
 
 #define NUM_REPS 10
-// #define CHESSY ///< Enable Chessy protocol, otherwise use dummy sensor accesses
+#define CHESSY ///< Enable Chessy protocol, otherwise use dummy sensor accesses
 
 // Sensor registers addresses
 #define CONTROL_REG_BASE 0x00 ///< Base address for the control register (start/stop bit)
@@ -53,7 +53,7 @@ int main()
     for (int i = 0; i < NUM_REPS; i++) {
         data = read_sensor(sensor_address);
         sum += data; // Accumulate the data
-        // clint_spin_ticks(100000); // Simulate some computation (e.g., 100ms)
+        clint_spin_ticks(100000); // Simulate some computation (e.g., 100ms)
     }
 
     // Stop timer

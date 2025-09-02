@@ -14,6 +14,8 @@
 #define CHESSY_REQ_32BIT 0x04
 #define CHESSY_REQ_64BIT 0x08
 
+#define CHESSY
+
 // This file is a collection of functions used to communicate with Messy running on the host system
 // If CHESSY is defined, the following functions will be used to interact with the Messy host
 // Otherwise, they will be mocked by fake sensor accesses
