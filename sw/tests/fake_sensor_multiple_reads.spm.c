@@ -9,26 +9,7 @@
 #include "chessy.h"
 #include "dif/uart.h"
 
-#define NUM_REPS 100
-
-//
-// Messy managed peripherals
-//
-
-// Pheripherals base addresses in Messy register map
-#define GESTURE_SENSOR_BASE 0x000
-#define ROBOTIC_ARM_BASE 0x1000
-
-// Gesture sensor registers addresses
-#define GESTURE_CONTROL_REG_BASE 0x00 ///< Base address for the control register (start/stop bit)
-#define GESTURE_MODULE_REG_BASE 0x04  ///< Base address for the MODULE amount register
-#define GESTURE_STATUS_REG_BASE 0x08  ///< Base address for the status register (new data present bit)
-#define GESTURE_DATA_REG_BASE 0x0C    ///< Base address for the data register
-
-// Robotic arm registers addresses
-#define ROBOTIC_ARM_CONTROL_REG_BASE 0x00 ///< Base address for the control register (start/stop bit)
-#define ROBOTIC_ARM_STATUS_REG_BASE 0x04  ///< Base address for the status register
-#define ROBOTIC_ARM_MOVEMENT_REG_BASE 0x08 ///< Base address for the input movement register
+#define NUM_REPS 300
 
 // UART helper
 void uart_print(char *str)
@@ -66,19 +47,20 @@ int main()
     start_time = clint_get_mtime();
     start_cc   = get_mcycle();
 
+    uint8_t start_bit = 1;
     // Start sensor
-    write_sensor(sensor_ctrl_address, 1);
+    write_sensor(sensor_ctrl_address, 1, &start_bit);
     // Start robotic arm
-    write_sensor(robotic_arm_ctrl_address, 1);
+    write_sensor(robotic_arm_ctrl_address, 1, &start_bit);
 
     // Main loop
     for (int i = 0; i < NUM_REPS; i++) {
-        data = read_sensor(sensor_data_address);
+        read_sensor(sensor_data_address + i, 8, (uint8_t *)&data); // Read 8 bytes from sensor data register
         sum += data; // Accumulate the data
         //clint_spin_ticks(100000); // Simulate some computation (e.g., 100ms)
     }
 
-    write_sensor(robotic_arm_data_address, sum % 256); // Move robotic arm based on sum of data
+    write_sensor(robotic_arm_data_address, 8, (uint8_t *)&sum); // Send the sum to the robotic arm
 
     // Stop timer
     end_cc   = get_mcycle();
