@@ -60,6 +60,12 @@ void write_sensor(volatile uint64_t *address, volatile unsigned int size_bytes, 
     __chessy_access(0, address, data, size_bytes);
 }
 
+__attribute__((optimize("O0"))) void chessy_close()
+{
+    // Notify the host that the program is exiting
+    __asm__ volatile("ebreak");
+}
+
 #else
 
 void read_sensor(volatile uint64_t *address, volatile unsigned int size_bytes)

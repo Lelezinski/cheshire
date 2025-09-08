@@ -76,9 +76,7 @@ int main()
     semihost_printf("Sum of sensor data: %ld\n", sum);
     semihost_printf("----------------------------------------\n\n");
 
-    while (1) {
-        wfi();
-    }
+    chessy_close();
 #else
     uart_print("----- Test completed successfully! -----");
 #endif

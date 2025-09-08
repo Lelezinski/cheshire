@@ -69,12 +69,10 @@ int main()
     semihost_printf("Sensor data (first byte): %d\n", data[0]);
     semihost_printf("Sensor data (last byte): %d\n", data[SIZE_BYTES - 1]);
     semihost_printf("Number of cycles: %ld\n", end_cc - start_cc);
-    semihost_printf("Elapsed time: %ld ms\n", (end_time - start_time) / 1000);
+    semihost_printf("Elapsed time: %ld us\n", (end_time - start_time));
     semihost_printf("----------------------------------------\n\n");
 
-    while (1) {
-        wfi();
-    }
+    chessy_close();
 #else
     uart_print("----- Test completed successfully! -----");
 #endif
